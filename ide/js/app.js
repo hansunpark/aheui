@@ -11,7 +11,7 @@ const PEN_COLORS = [
   'rgba(255, 213, 0, 0.42)', 'rgba(0, 200, 83, 0.32)', 'rgba(41, 121, 255, 0.30)',
   'rgba(255, 64, 129, 0.32)', 'rgba(170, 0, 255, 0.28)', 'rgba(255, 109, 0, 0.36)',
 ];
-const TOOLS = ['cursor', 'pen', 'bp', 'rect', 'lasso', 'brush'];
+const TOOLS = ['cursor', 'pen', 'bp', 'lasso', 'brush'];
 const TX_LABELS = {
   type: '입력', delete: '지우기', pen: '형광펜', highlight: '형광펜', paste: '붙여넣기', palette: '팔레트 배치',
   breakpoint: '중단점', restore: '버전 복원', replace: '전체 바꾸기', edit: '편집', open: '파일 열기', new: '새로',
@@ -225,7 +225,9 @@ class App {
     else if (ctrl && e.key === 'Enter') this.runNative(this.active);
     else if (ctrl && e.code === 'KeyS') this.saveFile(e.shiftKey);
     else if (ctrl && e.code === 'KeyO') this.openFile();
-    else if (e.altKey && !ctrl && /^Digit[1-6]$/.test(e.code) && !inText) this.setTool(TOOLS[+e.code.slice(5) - 1]);
+    else if (e.altKey && !ctrl && /^Digit[1-5]$/.test(e.code) && !inText) this.setTool(TOOLS[+e.code.slice(5) - 1]);
+    else if (ctrl && e.code === 'Backquote') this.togglePalettePanel();
+    else if (e.key === 'Escape' && this.armedPalette) { this.disarmPalette(); this.status('팔레트 배치를 취소했습니다'); }
     else if (e.key === 'Escape' && this.modalOpen) handled = false;
     else handled = false;
     if (handled) e.preventDefault();
@@ -659,26 +661,56 @@ class App {
     const pseudo = { doc, machine: null, trace: null };
     const view = new CodeView(this, pseudo, { singleLine: true });
     const item = { doc, view, el: null };
-    const handle = el('div', { class: 'handle', title: '끌어서 코드 공간에 그리기' }, '⠿');
+    const arm = el('button', { class: 'arm', title: '배치 켜기: 코드 공간에서 시작할 칸을 누르고 끌기' }, '▶ 배치');
     item.el = el('div', { class: 'pal-line' },
-      handle,
+      arm,
       view.el,
       el('button', {
         class: 'del', title: '이 줄 지우기',
-        onclick: () => { this.palette = this.palette.filter(p => p !== item); item.el.remove(); this.scheduleSave(); },
+        onclick: () => {
+          if (this.armedPalette && this.armedPalette.item === item) this.disarmPalette();
+          this.palette = this.palette.filter(p => p !== item);
+          item.el.remove();
+          this.scheduleSave();
+        },
       }, '✕'));
-    handle.addEventListener('pointerdown', e => {
-      if (e.button !== 0) return;
+    arm.addEventListener('click', () => {
+      if (this.armedPalette && this.armedPalette.item === item) { this.disarmPalette(); this.status(''); return; }
       view.commitInPlace();
       const chars = [...doc.text()].filter(c => A.decompose(c.codePointAt(0)));
-      if (!chars.length) { e.preventDefault(); this.status('팔레트 줄이 비어 있습니다. 먼저 한 줄로 코드를 쓰세요'); return; }
-      this.status('코드 공간의 빈 칸 위로 끌고 가세요 · Shift를 누른 채 움직이면 두 칸 이동 · Esc 취소', true);
-      this.startDrag({ kind: 'palette', text: chars.join('') }, e, el('div', {}, chars.join('')));
+      if (!chars.length) { this.status('팔레트 줄이 비어 있습니다. 먼저 한 줄로 코드를 쓰세요'); return; }
+      this.armPalette({ kind: 'palette', text: chars.join(''), item });
     });
     doc.onChange(() => this.scheduleSave());
     this.palette.push(item);
     $('palette').append(item.el);
     return item;
+  }
+
+  /** 팔레트 배치 대기: 다음에 코드 공간을 누른 칸부터 끄는 길을 따라 놓는다 */
+  armPalette(payload) {
+    this.disarmPalette();
+    this.armedPalette = payload;
+    payload.item.el.classList.add('armed');
+    document.body.classList.add('armed');
+    this.status(`'${payload.text}' 배치 준비 · 코드 공간에서 시작할 칸을 누르고 끌어 그리세요 · Shift = 두 칸 · Esc 취소`, true);
+  }
+
+  disarmPalette() {
+    if (!this.armedPalette) return;
+    this.armedPalette.item.el.classList.remove('armed');
+    this.armedPalette = null;
+    document.body.classList.remove('armed');
+  }
+
+  togglePalettePanel(open) {
+    const panel = $('palette-panel');
+    const isOpen = open ?? panel.classList.contains('closed');
+    panel.classList.toggle('closed', !isOpen);
+    $('pal-toggle').textContent = (isOpen ? '▾' : '▸') + ' 한 줄 팔레트';
+    this.paletteOpen = isOpen;
+    if (isOpen) this.palette.forEach(p => p.view.invalidate());
+    this.scheduleSave();
   }
 
   // ───── 버전 (간단한 git) ─────
@@ -839,6 +871,7 @@ class App {
         } : null,
       })),
       palette: this.palette.map(p => p.doc.text()),
+      paletteOpen: this.paletteOpen !== false,
       clips: this.clips,
     };
   }
@@ -864,6 +897,7 @@ class App {
     }
     (w.palette || []).forEach(t => this.addPaletteLine(t));
     if (!this.palette.length) this.addPaletteLine('');
+    this.togglePalettePanel(w.paletteOpen !== false);
     this.clips = w.clips || [];
     this.clipSeq = Math.max(1, ...this.clips.map(c => c.id + 1));
     if (w.penColor) this.penColor = w.penColor;
@@ -918,7 +952,8 @@ class App {
       if (s.native) s.native.stdout = '';
       this.renderRunPanel();
     };
-    $('pal-add').onclick = () => { const p = this.addPaletteLine(''); p.view.el.focus(); this.scheduleSave(); };
+    $('pal-add').onclick = () => { this.togglePalettePanel(true); const p = this.addPaletteLine(''); p.view.el.focus(); this.scheduleSave(); };
+    $('pal-toggle').onclick = () => this.togglePalettePanel();
     $('clip-clear').onclick = () => { this.clips = []; this.renderClips(); this.scheduleSave(); };
     $('commit-msg').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); this.commit(); } });
   }

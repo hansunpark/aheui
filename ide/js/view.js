@@ -155,8 +155,9 @@ export class CodeView {
       switch (e.code) {
         case 'KeyZ': this.commitInPlace(); e.shiftKey ? this.doc.redo() : this.doc.undo(); break;
         case 'KeyY': this.commitInPlace(); this.doc.redo(); break;
-        case 'KeyC': this.copySelection(false); break;
-        case 'KeyX': this.copySelection(true); break;
+        // 조합 중인 글자를 먼저 확정해야 복사에 들어간다
+        case 'KeyC': this.commitInPlace(); this.copySelection(false); break;
+        case 'KeyX': this.commitInPlace(); this.copySelection(true); break;
         case 'KeyV': this.commitInPlace(); this.app.pasteLatest(this); break;
         case 'KeyA': this.selectAll(); break;
         default: handled = false;
@@ -253,11 +254,23 @@ export class CodeView {
     if (e.button === 1) return;
     this.canvas.setPointerCapture(e.pointerId);
     const mode = e.shiftKey ? 'add' : e.altKey ? 'sub' : 'set';
+    // 팔레트에서 배치를 켠 상태: 처음 누른 칸부터 끄는 길을 따라 글자를 놓는다
+    const armed = !this.singleLine && this.app.armedPalette;
+    if (armed && e.button === 0) {
+      this.app.disarmPalette();
+      this.commitInPlace();
+      this.startPlacement(armed);
+      this.placementTo(cell, e.shiftKey);
+      this.drag = { type: 'place' };
+      this.invalidate();
+      return;
+    }
     switch (tool) {
       case 'cursor':
+        // 클릭 = 그 칸에 입력, 드래그 = 사각형 선택
         this.commitInPlace();
         this.setCursor(cell.x, cell.y);
-        if (this.selection.size) { this.selection.clear(); this.selectionChanged(); }
+        this.drag = { type: 'rect', start: cell, end: cell, mode, click: true };
         break;
       case 'pen':
         this.doc.begin('pen');
@@ -293,7 +306,11 @@ export class CodeView {
         for (const c of lineCells(d.last, cell)) this.paint(c, d.erase);
         d.last = cell;
         break;
-      case 'rect': d.end = cell; break;
+      case 'place': this.placementTo(cell, e.shiftKey); break;
+      case 'rect':
+        d.end = cell;
+        if (cell.x !== d.start.x || cell.y !== d.start.y) d.click = false;
+        break;
       case 'lasso': d.pts.push(this.contentPoint(e.clientX, e.clientY)); break;
       case 'brush':
         for (const c of lineCells(d.last, cell)) d.cells.add(cellKey(c.x, c.y));
@@ -308,6 +325,12 @@ export class CodeView {
     this.drag = null;
     if (!d) return;
     if (d.type === 'pen') { this.doc.end(); return; }
+    if (d.type === 'place') { this.finishPlacement(); return; }
+    if (d.type === 'rect' && d.click) {
+      // 그냥 클릭: 선택 해제 (Shift/Alt 클릭은 선택을 그대로 둔다)
+      if (d.mode === 'set' && this.selection.size) { this.selection.clear(); this.selectionChanged(); }
+      return;
+    }
     const cells = this.draftCells(d);
     if (d.mode === 'set') this.selection = cells;
     else if (d.mode === 'add') for (const k of cells) this.selection.add(k);
@@ -341,37 +364,35 @@ export class CodeView {
     return out;
   }
 
-  // ───── 드래그 앤 드롭 대상 (클립보드, 팔레트) ─────
+  // ───── 클립보드 끌어 놓기 대상 ─────
   dragOver(payload, e) {
-    if (this.singleLine) return;
+    if (this.singleLine || payload.kind !== 'clip') return;
     const cell = this.cellAt(e.clientX, e.clientY);
-    if (payload.kind === 'clip') {
-      const x = Math.max(0, cell.x - payload.grab.x), y = Math.max(0, cell.y - payload.grab.y);
-      this.pastePreview = { clip: payload.clip, x, y, conflicts: this.app.pasteConflicts(this.doc, payload.clip, x, y) };
-    } else if (payload.kind === 'palette') {
-      if (!this.placement || this.placement.source !== payload) this.startPlacement(payload);
-      this.placementTo(cell, e.shiftKey);
-    }
+    const x = Math.max(0, cell.x - payload.grab.x), y = Math.max(0, cell.y - payload.grab.y);
+    this.pastePreview = { clip: payload.clip, x, y, conflicts: this.app.pasteConflicts(this.doc, payload.clip, x, y) };
     this.invalidate();
   }
 
-  dragLeave(payload) {
-    if (payload.kind === 'clip') this.pastePreview = null;
-    else if (payload.kind === 'palette' && this.placement && !this.placement.placed.length) this.placement = null;
+  dragLeave() {
+    this.pastePreview = null;
     this.invalidate();
   }
 
   drop(payload) {
-    if (payload.kind === 'clip') {
-      const p = this.pastePreview;
-      this.pastePreview = null;
-      if (p) this.app.pasteClip(this, p.clip, p.x, p.y);
-    } else if (payload.kind === 'palette' && this.placement) {
-      if (!this.placement.placed.length) { this.placement = null; return; }
-      this.placement.pending = true;
-      this.el.focus({ preventScroll: true });
-      this.app.status(`팔레트 배치 ${this.placement.placed.length}/${this.placement.chars.length}글자 · Enter를 눌러 적용 · Esc 취소`, true);
-    }
+    const p = this.pastePreview;
+    this.pastePreview = null;
+    if (p && payload.kind === 'clip') this.app.pasteClip(this, p.clip, p.x, p.y);
+    this.invalidate();
+  }
+
+  /** 팔레트 배치 드래그를 끝냈을 때: 놓인 글자를 강조하고 Enter/Esc를 기다린다 */
+  finishPlacement() {
+    const P = this.placement;
+    if (!P) return;
+    if (!P.placed.length) { this.placement = null; this.app.status(''); this.invalidate(); return; }
+    P.pending = true;
+    this.el.focus({ preventScroll: true });
+    this.app.status(`팔레트 배치 ${P.placed.length}/${P.chars.length}글자 · Enter를 눌러 적용 · Esc 취소`, true);
     this.invalidate();
   }
 
@@ -499,7 +520,9 @@ export class CodeView {
 
     // 선택 영역 (확정 + 드래그 중)
     const sel = this.selection;
-    const draft = this.drag && this.drag.type !== 'pen' ? this.draftCells(this.drag) : null;
+    const dg = this.drag;
+    const selecting = dg && (dg.type === 'lasso' || dg.type === 'brush' || (dg.type === 'rect' && !dg.click));
+    const draft = selecting ? this.draftCells(dg) : null;
     if (sel.size || draft) {
       ctx.fillStyle = T.sel;
       const drawSel = k => { const [x, y] = parseKey(k); if (inView(x, y)) ctx.fillRect(px(x) + 1, py(y) + 1, cs - 1, cs - 1); };

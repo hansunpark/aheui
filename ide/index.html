@@ -28,13 +28,12 @@
       <button data-act="native" title="네이티브 인터프리터로 전속력 실행 (Ctrl+Enter)">⚡ 네이티브</button>
     </div>
     <div class="group tools" role="radiogroup" aria-label="마우스 도구">
-      <button data-tool="cursor" title="입력 커서: 클릭한 칸에 입력 (Alt+1)">⌶ 커서</button>
+      <button data-tool="cursor" title="클릭: 그 칸에 입력 · 드래그: 사각형 선택 (Shift 더하기, Alt 빼기) (Alt+1)">⌶ 커서·선택</button>
       <button data-tool="pen" title="형광펜: 드래그로 칠하기, 오른쪽 버튼으로 지우기 (Alt+2)">🖍 펜</button>
       <span id="pen-colors" class="swatches"></span>
       <button data-tool="bp" title="중단점 찍기/지우기 (Alt+3)">● 중단점</button>
-      <button data-tool="rect" title="사각형 선택 · Shift 더하기 · Alt 빼기 (Alt+4)">▭ 사각</button>
-      <button data-tool="lasso" title="올가미 선택: 테두리를 그려 안쪽 선택 (Alt+5)">◌ 올가미</button>
-      <button data-tool="brush" title="붓 선택: 지나간 칸 선택 (Alt+6)">⁘ 붓</button>
+      <button data-tool="lasso" title="올가미 선택: 테두리를 그려 안쪽 선택 · Shift 더하기 · Alt 빼기 (Alt+4)">◌ 올가미</button>
+      <button data-tool="brush" title="붓 선택: 지나간 칸 선택 · Shift 더하기 · Alt 빼기 (Alt+5)">⁘ 붓</button>
     </div>
     <div class="group">
       <button data-act="newSpace" title="떠 있는 보조 코드 공간 만들기">＋ 코드 공간</button>
@@ -43,11 +42,6 @@
 
   <main class="layout">
     <aside class="side left">
-      <section class="panel">
-        <h2>한 줄 팔레트 <button class="small" id="pal-add" title="팔레트 줄 추가">＋</button></h2>
-        <div id="palette" class="palette"></div>
-        <p class="hint">⠿를 끌어 코드 공간 위를 지나가면 한 글자씩 놓이고 홀소리가 길 방향으로 바뀝니다. Shift를 누른 곳은 두 칸 이동. 놓은 뒤 Enter 적용 · Esc 취소.</p>
-      </section>
       <section class="panel grow">
         <h2>클립보드 <button class="small" id="clip-clear" title="클립보드 비우기">비우기</button></h2>
         <div id="clips" class="clips"></div>
@@ -55,12 +49,22 @@
       </section>
     </aside>
 
-    <div class="workspace" id="workspace">
-      <div class="main-space space-frame" id="main-space">
-        <div class="space-title"><span class="name">메인</span><span class="file" id="main-file"></span></div>
+    <div class="center">
+      <div class="workspace" id="workspace">
+        <div class="main-space space-frame" id="main-space">
+          <div class="space-title"><span class="name">메인</span><span class="file" id="main-file"></span></div>
+        </div>
+        <div class="float-layer" id="float-layer"></div>
+        <div class="dock" id="dock"></div>
       </div>
-      <div class="float-layer" id="float-layer"></div>
-      <div class="dock" id="dock"></div>
+      <section class="bottom-panel" id="palette-panel">
+        <div class="bottom-head">
+          <button class="toggle" id="pal-toggle" title="한 줄 팔레트 열기/닫기 (Ctrl+`)">▾ 한 줄 팔레트</button>
+          <span class="hint">▶ 배치를 누른 뒤 코드 공간에서 시작할 칸을 누르고 끌면 한 글자씩 놓입니다 · 홀소리는 길 방향으로 · Shift를 누른 곳은 두 칸 · 놓은 뒤 Enter 적용, Esc 취소</span>
+          <button class="small" id="pal-add" title="팔레트 줄 추가">＋ 줄</button>
+        </div>
+        <div id="palette" class="palette"></div>
+      </section>
     </div>
 
     <aside class="side right">
