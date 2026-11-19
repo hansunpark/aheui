@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Aheui.Core/Aheui.Core.csproj" />
+  <Project Path="src/Aheui/Aheui.csproj" />
+  <Project Path="src/Aheui.Ide/Aheui.Ide.csproj" />
+</Solution>

@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "aheui-ide",
-      "runtimeExecutable": "src/Aheui/bin/Release/net10.0/aheui.exe",
-      "runtimeArgs": ["ide", "--no-browser", "--port", "8517"],
-      "port": 8517
+      "name": "ide-static",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--no-project", "python", "-m", "http.server", "8520", "--bind", "127.0.0.1", "--directory", "ide"],
+      "port": 8520
     }
   ]
 }

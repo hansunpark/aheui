@@ -1,6 +1,5 @@
-'use strict';
 // IDE 예제 모음
-const AHEUI_SAMPLES = [
+export const SAMPLES = [
   {
     name: 'Hello, world!',
     input: '',
