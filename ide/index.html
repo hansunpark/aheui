@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>아희 IDE</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="toolbar">
+    <strong class="brand">아희 IDE</strong>
+    <div class="group">
+      <button id="btn-new" title="새 파일">새로</button>
+      <button id="btn-open" title="파일 열기">열기</button>
+      <button id="btn-save" title="파일로 저장 (Ctrl+S)">저장</button>
+      <select id="sel-sample" title="예제">
+        <option value="">예제 불러오기…</option>
+      </select>
+      <input type="file" id="file-input" accept=".aheui,.txt,text/plain" hidden>
+    </div>
+    <div class="group">
+      <button id="btn-run" class="primary" title="실행 / 계속 (F5)">▶ 실행</button>
+      <button id="btn-pause" title="일시정지 (F6)" disabled>⏸ 일시정지</button>
+      <button id="btn-step" title="한 단계 실행 (F10)">⏭ 한 단계</button>
+      <button id="btn-reset" title="처음으로 (Shift+F5)">⏹ 초기화</button>
+      <label class="speed" title="실행 속도">속도
+        <input type="range" id="speed" min="1" max="10" value="6">
+      </label>
+    </div>
+    <div class="group">
+      <button id="btn-native" title="네이티브 인터프리터로 최고 속도 실행 (Ctrl+Enter)" hidden>⚡ 네이티브 실행</button>
+      <span id="native-off" class="muted" title="`aheui ide`로 열면 네이티브 실행을 쓸 수 있습니다">네이티브 실행: 꺼짐</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="pane editor-pane">
+      <h2>코드 <span class="muted">한 글자 = 한 칸 (정확한 배치는 코드 공간에서)</span></h2>
+      <textarea id="code" spellcheck="false" autocomplete="off" wrap="off"></textarea>
+    </section>
+
+    <section class="pane grid-pane">
+      <h2>코드 공간 <span class="muted">칸을 누르면 중단점</span></h2>
+      <div id="grid" class="grid"></div>
+      <div id="cell-info" class="cell-info muted">칸 위에 마우스를 올리면 명령 설명이 나옵니다.</div>
+    </section>
+
+    <aside class="pane side-pane">
+      <h2>상태</h2>
+      <dl class="status">
+        <dt>상태</dt><dd id="st-state">준비</dd>
+        <dt>단계</dt><dd id="st-steps">0</dd>
+        <dt>위치</dt><dd id="st-pos">(0, 0)</dd>
+        <dt>방향</dt><dd id="st-dir">↓</dd>
+        <dt>저장공간</dt><dd id="st-storage">(없음)</dd>
+      </dl>
+
+      <h2>저장공간</h2>
+      <div id="stores" class="stores"></div>
+
+      <h2>입력</h2>
+      <textarea id="input" class="io" spellcheck="false" placeholder="프로그램 입력"></textarea>
+
+      <h2>출력 <button id="btn-clear-out" class="small">지우기</button></h2>
+      <pre id="output" class="io output"></pre>
+    </aside>
+  </main>
+
+  <script src="aheui.js"></script>
+  <script src="samples.js"></script>
+  <script src="ide.js"></script>
+</body>
+</html>
