@@ -80,6 +80,7 @@ sealed class MainForm : Form
                     msg["suggestedName"]?.GetValue<string>() ?? "program.aheui",
                     msg["kind"]?.GetValue<string>() ?? "aheui"),
                 "startupFile" => StartupFile(),
+                "readClipboard" => Clipboard.ContainsText() ? Clipboard.GetText() : null,
                 _ => throw new InvalidOperationException("알 수 없는 요청: " + type),
             };
             Reply(new { id, ok = true, result });

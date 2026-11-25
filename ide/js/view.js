@@ -156,7 +156,9 @@ export class CodeView {
         case 'KeyZ': this.commitInPlace(); e.shiftKey ? this.doc.redo() : this.doc.undo(); break;
         case 'KeyY': this.commitInPlace(); this.doc.redo(); break;
         // 조합 중인 글자를 먼저 확정해야 복사에 들어간다
-        case 'KeyC': this.commitInPlace(); this.copySelection(false); break;
+        case 'KeyC':
+          if (e.shiftKey) { handled = false; break; } // Ctrl+Shift+C: 텍스트로 복사 (앱에서 처리)
+          this.commitInPlace(); this.copySelection(false); break;
         case 'KeyX': this.commitInPlace(); this.copySelection(true); break;
         case 'KeyV': this.commitInPlace(); this.app.pasteLatest(this); break;
         case 'KeyA': this.selectAll(); break;

@@ -127,6 +127,10 @@ class App {
     this.main.view.el.focus();
     document.addEventListener('keydown', e => this.onGlobalKey(e));
     window.addEventListener('beforeunload', () => this.saveWorkspace());
+    // 다른 프로그램에서 복사한 한글 코드를 IDE 클립보드로 가져온다 (창으로 돌아올 때마다 확인)
+    window.addEventListener('focus', () => this.syncSystemClipboard());
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.syncSystemClipboard(); });
+    this.syncSystemClipboard();
     if (host.available) {
       try {
         const f = await host.call('startupFile');
@@ -197,6 +201,7 @@ class App {
       case 'open': return this.openFile();
       case 'save': return this.saveFile(false);
       case 'saveAs': return this.saveFile(true);
+      case 'copyText': return this.copyText();
       case 'openProject': return this.openProject();
       case 'saveProject': return this.saveProject();
       case 'run': return this.run(s);
@@ -223,6 +228,7 @@ class App {
     else if (e.key === 'F10' && e.shiftKey) this.stepBack(this.active);
     else if (e.key === 'F10') this.step(this.active);
     else if (ctrl && e.key === 'Enter') this.runNative(this.active);
+    else if (ctrl && e.shiftKey && e.code === 'KeyC' && !inText) this.copyText();
     else if (ctrl && e.code === 'KeyS') this.saveFile(e.shiftKey);
     else if (ctrl && e.code === 'KeyO') this.openFile();
     else if (e.altKey && !ctrl && /^Digit[1-5]$/.test(e.code) && !inText) this.setTool(TOOLS[+e.code.slice(5) - 1]);
@@ -504,6 +510,56 @@ class App {
   }
 
   // ───── 클립보드 (프로그램 내부 전용) ─────
+  /** 시스템 클립보드 글자 읽기 (데스크톱 앱이면 창 쪽에서, 아니면 브라우저 API로) */
+  async readSystemClipboard() {
+    if (host.available) return (await host.call('readClipboard')) || '';
+    return navigator.clipboard && navigator.clipboard.readText ? navigator.clipboard.readText() : '';
+  }
+
+  /**
+   * 시스템 클립보드에 한글 음절이 있으면 모양 그대로 IDE 클립보드 맨 위에 넣는다.
+   * 한글이 아닌 글자는 빈칸으로 둔다. 같은 내용은 다시 넣지 않는다.
+   */
+  async syncSystemClipboard() {
+    if (this._syncing) return;
+    this._syncing = true;
+    try {
+      let text;
+      try { text = await this.readSystemClipboard(); } catch { return; }
+      if (!text || text === this.lastSystemClip || text.length > 50000) return;
+      this.lastSystemClip = text;
+      const clip = this.clipFromText(text);
+      if (!clip) return;
+      const sig = JSON.stringify(clip.cells);
+      if (this.clips.some(c => JSON.stringify(c.cells) === sig)) return;
+      clip.source = 'system';
+      this.addClip(clip);
+      this.status(`시스템 클립보드의 한글 ${clip.cells.length}글자를 IDE 클립보드에 넣었습니다`);
+    } finally {
+      this._syncing = false;
+    }
+  }
+
+  clipFromText(text) {
+    const cells = [];
+    text.replace(/\r\n?/g, '\n').split('\n').forEach((line, y) => {
+      let x = 0;
+      for (const ch of line) {
+        const cp = ch.codePointAt(0);
+        if (cp >= 0xAC00 && cp <= 0xD7A3) cells.push([x, y, cp, null]);
+        x++;
+      }
+    });
+    if (!cells.length) return null;
+    const minX = Math.min(...cells.map(c => c[0])), minY = Math.min(...cells.map(c => c[1]));
+    const norm = cells.map(([x, y, cp, hl]) => [x - minX, y - minY, cp, hl]);
+    return {
+      w: Math.max(...norm.map(c => c[0])) + 1,
+      h: Math.max(...norm.map(c => c[1])) + 1,
+      cells: norm,
+    };
+  }
+
   addClip(clip) {
     clip.id = this.clipSeq++;
     clip.time = Date.now();
@@ -546,7 +602,7 @@ class App {
       const canvas = this.clipCanvas(clip);
       const item = el('div', { class: 'clip', title: '끌어서 코드 공간에 놓기' },
         canvas,
-        el('div', { class: 'meta' }, `${clip.w}×${clip.h} · ${clip.cells.length}글자`),
+        el('div', { class: 'meta' }, `${clip.w}×${clip.h} · ${clip.cells.length}글자${clip.source === 'system' ? ' · 시스템 클립보드' : ''}`),
         el('button', {
           class: 'small del', title: '지우기',
           onclick: e => { e.stopPropagation(); this.clips = this.clips.filter(c => c !== clip); this.renderClips(); this.scheduleSave(); },
@@ -608,8 +664,9 @@ class App {
     this.status(`${pasted.size}글자를 붙여넣었습니다 (Ctrl+Z로 되돌리기)`);
   }
 
-  pasteLatest(view) {
+  async pasteLatest(view) {
     if (view.singleLine) return;
+    await this.syncSystemClipboard();
     const clip = this.clips[0];
     if (!clip) { this.status('클립보드가 비어 있습니다'); return; }
     this.pasteClip(view, clip, view.cursor.x, view.cursor.y);
@@ -824,6 +881,32 @@ class App {
       this.updateTitle();
       this.status(`${r.name}에 저장했습니다`);
     } catch (e) { this.status('저장 실패: ' + e.message); }
+  }
+
+  /** 활성 코드 공간을 텍스트로 시스템 클립보드에 복사한다 (저장한 파일과 같은 내용) */
+  async copyText() {
+    const s = this.active;
+    s.view.commitInPlace();
+    const text = s.doc.text();
+    if (!text) { this.status('복사할 코드가 없습니다'); return; }
+    this.lastSystemClip = text; // 방금 내보낸 글은 다시 가져오지 않는다
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      // 대체: 숨긴 textarea로 복사
+      const ta = el('textarea', { value: text });
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.append(ta);
+      ta.select();
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+      s.view.el.focus({ preventScroll: true });
+    }
+    const lines = text.split('\n').length;
+    this.status(ok ? `${s.title} 코드 ${lines}줄을 텍스트로 복사했습니다` : '클립보드에 복사하지 못했습니다');
   }
 
   async saveProject() {
