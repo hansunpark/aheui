@@ -155,6 +155,7 @@ UI를 고치는 중이라면 환경 변수 `AHEUI_IDE_DIR`에 저장소의 `ide`
 - **열기 / 저장**은 활성 코드 공간을 `.aheui` 파일로 다룹니다.
 - **프로젝트 열기 / 저장**은 작업 공간 전체를 `.aheuiproj`(JSON) 파일로 다룹니다.
 - 브라우저에서 `ide/index.html`을 직접 열어도 동작합니다. 이때 네이티브 실행은 빠지고, 저장은 내려받기로 대신합니다.
+- 웹판: <https://hansunpark.github.io/aheui/> — `main`의 `ide/`가 바뀌면 `.github/workflows/pages.yml`이 GitHub Pages에 자동 배포합니다.
 
 ## 테스트
 
