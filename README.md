@@ -39,8 +39,22 @@ UI를 고치는 중이라면 환경 변수 `AHEUI_IDE_DIR`에 저장소의 `ide`
 | `--profile` | 명령 종류별/노드별 실행 횟수 (느려짐) |
 | `--dump` | 컴파일된 명령 그래프 출력 |
 | `--no-jit` / `--no-opt` | JIT 끄기 / 핍홀 최적화 끄기 |
+| `--rpaheui-input` | 입력을 백준 채점기(rpaheui 1.2.2-24)와 똑같이 읽기 (아래 참고). `trace`에도 같은 옵션이 있습니다 |
 
 환경 변수 `AHEUI_JIT_THRESHOLD`로 JIT 전환 시점(실행한 명령 수, 기본 3천만)을 바꿀 수 있습니다.
+
+### 코드 읽기·디버깅 도구 (AI 에이전트용)
+
+2차원 코드를 머리로 따라가지 않아도 되도록 코드와 실행을 텍스트로 풀어 줍니다. Claude Code는 [.claude/skills/aheui/SKILL.md](.claude/skills/aheui/SKILL.md) 스킬(문법표, 작업 순서, 백준 함정)을 통해 이 도구들을 씁니다.
+
+| 명령 | 출력 |
+| --- | --- |
+| `aheui explain <파일> [--rows a:b] [--grid-only\|--cells-only]` | 칸 번호가 붙은 격자, 칸마다 `(x,y) 글자 = 초성+중성+받침 \| 명령 \| 방향 \| 뜻` |
+| `aheui asm <파일> [--opt]` | 도달 가능한 명령만 실행 순서대로 쓴 선형 어셈블리 (라벨, 값 부족/0 분기, 원래 좌표) |
+| `aheui trace <파일> [--input "1 2\n"] [--steps N] [--from N] [--at x,y] [--cmds-only] [--until-output] [--rpaheui-input]` | 단계마다 위치, 글자, 명령, 나가는 방향, 저장공간 전체, 출력 |
+| `aheui lint <파일>` | 두 칸 이동의 가장자리 감싸기, 종료 코드, 입력 처리 차이, 닿지 않는 칸, 값 부족 루프 출구(rpaheui -O2 버그 위험) |
+
+`trace`는 칸 단위로 그대로 따라가는 별도의 참조 실행기라서, `trace --quiet`로 컴파일러/JIT 결과와 맞대어 볼 수 있습니다.
 
 ## 인터프리터 구조와 최적화
 
@@ -86,6 +100,11 @@ UI를 고치는 중이라면 환경 변수 `AHEUI_IDE_DIR`에 저장소의 `ide`
   두 칸 이동이 끝을 넘으면 반대편 끝 칸으로 갑니다. 줄보다 짧은 위치는 빈칸으로 취급합니다. 파일 끝의 빈 줄은 무시합니다.
 - 나눗셈과 나머지는 0 쪽으로 버림합니다(C와 같음). 0으로 나누면 오류를 내고 종료 코드 1로 끝납니다.
 - 숫자 입력: 공백을 건너뛰고 `[+-]?[0-9]+`를 읽습니다. EOF이거나 숫자가 아니면 -1입니다. 문자 입력도 EOF면 -1입니다.
+- `--rpaheui-input`을 주면 입력을 백준 채점기 rpaheui 1.2.2-24(`read_number`, `read_utf8`)와 똑같이 읽습니다.
+  - 숫자: 앞 공백을 건너뛰지 않고, 부호는 `-`만 받습니다. 숫자 바로 뒤의 `' '`/`'	'`/`'
+'` 하나를 먹습니다(`''`은 먹지 않음). 숫자가 없거나 EOF면 런타임 에러(종료 코드 1)입니다.
+  - 문자: EOF, 잘린 글자, 잘못된 UTF-8은 -1입니다. 첫 바이트가 UTF-8 이어지는 바이트면 그 값을 돌려주고 소비하지 않습니다.
+  - 숫자 입력과 문자 입력을 섞는 백준 문제(`3 ABC`처럼)는 이 옵션으로 확인하세요. 기본 모드는 숫자 뒤 공백을 남겨 두므로 결과가 다릅니다.
 - 출력할 수 없는 코드값(음수, 서로게이트, 0x10FFFF 초과)은 U+FFFD로 출력합니다.
 - ㅎ 통로(받침 ㅎ 저장공간)는 스택으로 취급합니다.
 - 명령 없이 무한히 도는 경로에 들어가면 경고를 출력하고 CPU를 쓰지 않은 채 대기합니다.
@@ -172,6 +191,12 @@ uv run --no-project python tests/run_snippets.py tests/snippets
 
 ```bash
 uv run --no-project python tests/run_snippets.py tests/snippets --flags=--no-jit
+```
+
+참조 실행기(`trace`)로 돌리기 (logo는 느려서 시간 초과):
+
+```bash
+uv run --no-project python tests/run_snippets.py tests/snippets --flags="trace --quiet"
 ```
 
 ```bash
