@@ -19,12 +19,18 @@ public static class Cli
           --dump       컴파일된 명령 그래프를 출력하고 종료
           --stats      실행 후 통계(노드 수, 시간)를 표준 오류로 출력
           --profile    명령 종류별/노드별 실행 횟수를 표준 오류로 출력 (느려짐)
+          --rpaheui-input
+                       입력을 백준 채점기(rpaheui 1.2.2-24)와 똑같이 읽기: 숫자 앞 공백을 건너뛰지 않고,
+                       숫자 뒤 ' '/'\t'/'\n' 하나를 먹고, 숫자가 없으면(EOF 포함) 런타임 에러(종료 코드 1)
+
+        에이전트/디버깅용 하위 명령: aheui explain | asm | trace | lint <파일>  (aheui trace --help)
         """;
 
     public static int Run(string[] args)
     {
+        if (args.Length > 0 && AgentTools.IsSubcommand(args[0])) return AgentTools.Main(args);
         string? file = null, code = null;
-        bool optimize = true, dump = false, stats = false, profile = false, jit = true;
+        bool optimize = true, dump = false, stats = false, profile = false, jit = true, rpaheuiInput = false;
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
@@ -35,6 +41,7 @@ public static class Cli
                 case "--stats": stats = true; break;
                 case "--profile": profile = true; break;
                 case "--no-jit": jit = false; break;
+                case "--rpaheui-input": rpaheuiInput = true; break;
                 case "-h" or "--help": Console.Error.WriteLine(Usage); return 0;
                 default:
                     if (args[i].StartsWith('-') && args[i] != "-") { Console.Error.WriteLine($"알 수 없는 옵션: {args[i]}\n\n{Usage}"); return 2; }
@@ -70,10 +77,17 @@ public static class Cli
 
         var stdout = Console.OpenStandardOutput();
         var output = new Output(stdout);
-        var input = new Input(Console.OpenStandardInput(), Console.IsInputRedirected ? null : output);
+        var input = new Input(Console.OpenStandardInput(), Console.IsInputRedirected ? null : output, rpaheuiInput);
 
         sw.Restart();
-        var result = Vm.Run(program, input, output, profile, jit);
+        RunResult result;
+        try { result = Vm.Run(program, input, output, profile, jit); }
+        catch (RpaheuiInputException e)
+        {
+            output.Flush();
+            Console.Error.WriteLine($"aheui: {e.Message}");
+            return 1;
+        }
         var runTime = sw.Elapsed;
 
         if (stats)
